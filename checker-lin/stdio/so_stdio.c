@@ -24,6 +24,8 @@ struct _so_file
         unsigned int buff_pos;
         char mode[3];
         int fd;
+        char reached_end;
+        char had_error;
 };
 
 FUNC_DECL_PREFIX int so_fgetc(SO_FILE *stream)
@@ -38,13 +40,15 @@ FUNC_DECL_PREFIX int so_fgetc(SO_FILE *stream)
                         break;
                 }
 
-        if (!exists)
+        if (!exists) {
+                stream->had_error = 1;
                 return 0;
+        }
 
         if (strlen(stream->buffer) == 0) {
                 int count = read(stream->fd, stream->buffer, DEFAULT_BUF_SIZE);
                 if (count == 0) {
-                        printf("EOF\n");
+                        stream->reached_end = 1;
                         return SO_EOF;
                 }
 
@@ -56,6 +60,7 @@ FUNC_DECL_PREFIX int so_fgetc(SO_FILE *stream)
                         memset(stream->buffer, 0, DEFAULT_BUF_SIZE);
                         int count = read(stream->fd, stream->buffer, DEFAULT_BUF_SIZE);
                         if (count == 0) {
+                                stream->reached_end = 1;
                                 return SO_EOF;
                         }
 
@@ -149,6 +154,7 @@ FUNC_DECL_PREFIX SO_FILE *so_fopen(const char *pathname, const char *mode)
         file->read_pos = 0;
         file->write_pos = 0;
         file->buff_pos = -1;
+        file->reached_end = 0;
         if (!strcmp(mode, "a") || !strcmp(mode, "a+")) {
                 fd = open(pathname, O_RDONLY);
                 if (fd > 0)
@@ -167,9 +173,87 @@ FUNC_DECL_PREFIX SO_FILE *so_fopen(const char *pathname, const char *mode)
         return file;
 }
 
+FUNC_DECL_PREFIX int so_fileno(SO_FILE *stream)
+{
+        return stream->fd;
+}
+
+FUNC_DECL_PREFIX int so_feof(SO_FILE *stream)
+{
+        return stream->reached_end;
+}
+
+FUNC_DECL_PREFIX int so_fputc(int c, SO_FILE *stream)
+{
+        char possible_modes[4][3] = {"r+", "w", "w+", "a+"};
+        char exists = 0;
+        int i;
+        ssize_t count = 0;
+
+        for (i = 0; i < 4; i++)
+                if (!strcmp(possible_modes[i], stream->mode)) {
+                        exists = 1;
+                        break;
+                }
+
+        if (!exists) {
+                stream->had_error = 1;
+                return 0;
+        }
+
+        if (strlen(stream->buffer) == DEFAULT_BUF_SIZE) {
+                count = write(stream->fd, stream->buffer, DEFAULT_BUF_SIZE);
+
+                if (count == 0) {
+                        stream->had_error = 1;
+                        return SO_EOF;
+                }
+
+                memset(stream->buffer, 0, DEFAULT_BUF_SIZE + 1);
+                stream->buff_pos = 0;
+                stream->write_pos += count;
+
+        } else {
+                stream->buff_pos++;
+        }
+
+        stream->buffer[stream->buff_pos] = (unsigned char) c;
+        return c;
+}
+
+FUNC_DECL_PREFIX int so_fflush(SO_FILE *stream)
+{
+        char possible_modes[4][3] = {"r+", "w", "w+", "a+"};
+        char exists = 0;
+        int i, start = 0;
+        ssize_t count = 0;
+
+        for (i = 0; i < 4; i++)
+                if (!strcmp(possible_modes[i], stream->mode)) {
+                        exists = 1;
+                        break;
+                }
+
+        if (!exists) {
+                stream->had_error = 1;
+                return EOF;
+        }
+
+        count = write(stream->fd, stream->buffer, strlen(stream->buffer));
+        if (count == 0) {
+                stream->had_error = 1;
+                return EOF;
+        }
+
+        memset(stream->buffer, 0, DEFAULT_BUF_SIZE + 1);
+        stream->buff_pos = -1;
+
+        return 0;
+}
+
 int main() {
         char name[] = "test_file.txt";
-        SO_FILE *file = so_fopen(name, "a+");
+        SO_FILE *file = so_fopen(name, "w");
 
         if (file == NULL) {
                 printf("Failed to open file!\n");
@@ -186,10 +270,20 @@ int main() {
 
         int c = 0;
         printf("Text:\n");
-        while ((c = so_fgetc(file)) != SO_EOF) {
+        /*while ((c = so_fgetc(file)) != SO_EOF) {
                 printf("%c", (char) c);
+        }*/
+
+        char buff[] = "Text care va fi\n scris in fisier";
+        int i = 0;
+        while ((c = so_fputc(buff[i], file)) != SO_EOF) {
+                printf("%c", (char) c);
+                if (i + 1 == strlen(buff))
+                        break;
+                i++;
         }
 
+        so_fflush(file);
         so_fclose(file);
 
         return 0;
