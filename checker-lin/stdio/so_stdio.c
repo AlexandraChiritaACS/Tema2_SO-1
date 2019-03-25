@@ -9,7 +9,7 @@
 
 #include "so_stdio.h"
 
-#define DEFAULT_BUF_SIZE 4
+#define DEFAULT_BUF_SIZE 4096
 #define READ 1
 #define WRITE 2
 #define APPEND 3
@@ -33,6 +33,9 @@ FUNC_DECL_PREFIX int so_fgetc(SO_FILE *stream)
         char possible_modes[4][3] = {"r", "r+", "w+", "a+"};
         char exists = 0;
         int i;
+
+        if (stream->reached_end)
+                return SO_EOF;
 
         for (i = 0; i < 4; i++)
                 if (!strcmp(possible_modes[i], stream->mode)) {
@@ -89,7 +92,7 @@ FUNC_DECL_PREFIX SO_FILE *so_fopen(const char *pathname, const char *mode)
 {
         int path_size = strlen(pathname) + 1;
         int cursor_pos = 0;
-        int fd, offset = 0;
+        int fd = -1, offset = 0;
         char possible_modes[6][3] = {"r", "r+", "w", "w+", "a", "a+"};
         char exists = 0, i;
         mode_t mod = 0;
@@ -110,7 +113,7 @@ FUNC_DECL_PREFIX SO_FILE *so_fopen(const char *pathname, const char *mode)
         if (!strcmp(mode, "r+"))
                 mod = O_RDWR;
         if (!strcmp(mode, "w"))
-                mod = O_WRONLY;
+                mod = O_WRONLY | O_TRUNC;
         if (!strcmp(mode, "w+"))
                 mod = O_RDWR | O_CREAT | O_TRUNC;
         if (!strcmp(mode, "a"))
@@ -120,8 +123,12 @@ FUNC_DECL_PREFIX SO_FILE *so_fopen(const char *pathname, const char *mode)
         //file->mode = mod;
 
         // check if it's reading mode and the file doesn't exist
-        if (!strcmp(mode, "r") || !strcmp(mode, "r+")) {
-                if (access(pathname, F_OK ) == -1)
+        if (access(pathname, F_OK ) == -1) {
+                if (!strcmp(mode, "r") || !strcmp(mode, "r+")) {
+                        return NULL;
+                }
+                fd = creat(pathname, 0644);
+                if (fd < 0)
                         return NULL;
         }
 
@@ -162,13 +169,16 @@ FUNC_DECL_PREFIX SO_FILE *so_fopen(const char *pathname, const char *mode)
                 file->write_pos = offset;
         }
 
-        file->fd = open(pathname, mod, 0644);
-        if (file->fd < 0) {
-                free(file->pathname);
-                free(file->buffer);
-                free(file);
-                return NULL;
-        }
+        if (fd < 0) {
+                file->fd = open(pathname, mod, 0644);
+                if (file->fd < 0) {
+                        free(file->pathname);
+                        free(file->buffer);
+                        free(file);
+                        return NULL;
+                }
+        } else
+                file->fd = fd;
 
         return file;
 }
@@ -251,9 +261,25 @@ FUNC_DECL_PREFIX int so_fflush(SO_FILE *stream)
         return 0;
 }
 
-int main() {
+FUNC_DECL_PREFIX
+size_t so_fread(void *ptr, size_t size, size_t nmemb, SO_FILE *stream)
+{
+        char *p = ptr;
+        size_t i, count = 0;
+        for (i = 0; i < nmemb * size; i++) {
+                unsigned char ch = (unsigned char) so_fgetc(stream);
+                if (ch == SO_EOF)
+                        break;
+                memcpy(p + i, &ch, 1);
+                count++;
+        }
+
+        return count;
+}
+
+/*int main() {
         char name[] = "test_file.txt";
-        SO_FILE *file = so_fopen(name, "w");
+        SO_FILE *file = so_fopen(name, "r");
 
         if (file == NULL) {
                 printf("Failed to open file!\n");
@@ -270,21 +296,18 @@ int main() {
 
         int c = 0;
         printf("Text:\n");
-        /*while ((c = so_fgetc(file)) != SO_EOF) {
-                printf("%c", (char) c);
-        }*/
 
-        char buff[] = "Text care va fi\n scris in fisier";
-        int i = 0;
-        while ((c = so_fputc(buff[i], file)) != SO_EOF) {
-                printf("%c", (char) c);
-                if (i + 1 == strlen(buff))
-                        break;
-                i++;
+        char buff[50];
+        memset(buff, 0, 50);
+        int cnt = so_fread(buff, 1, 50, file);
+        printf("Cnt = %d\n", cnt);
+        if (cnt == 0) {
+                printf("Eroare de citire!\n");
+        } else {
+                printf("%s\n", buff);
         }
-
-        so_fflush(file);
+        //so_fflush(file);
         so_fclose(file);
 
         return 0;
-}
+}*/
