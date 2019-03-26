@@ -26,6 +26,7 @@ struct _so_file
         int fd;
         char reached_end;
         char had_error;
+        char last_op;
 };
 
 FUNC_DECL_PREFIX int so_fgetc(SO_FILE *stream)
@@ -75,11 +76,17 @@ FUNC_DECL_PREFIX int so_fgetc(SO_FILE *stream)
                 }
         }
 
+        stream->last_op = 2;
         return (int) stream->buffer[stream->buff_pos];
 }
 
 FUNC_DECL_PREFIX int so_fclose(SO_FILE *stream)
 {
+        if (stream->last_op == 1) {
+                int cnt = so_fflush(stream);
+                if (cnt == SO_EOF)
+                        return -1;
+        }
         int fd = stream->fd;
         free(stream->pathname);
         free(stream->buffer);
@@ -162,6 +169,7 @@ FUNC_DECL_PREFIX SO_FILE *so_fopen(const char *pathname, const char *mode)
         file->write_pos = 0;
         file->buff_pos = -1;
         file->reached_end = 0;
+        file->last_op = 0;
         if (!strcmp(mode, "a") || !strcmp(mode, "a+")) {
                 fd = open(pathname, O_RDONLY);
                 if (fd > 0)
@@ -228,6 +236,7 @@ FUNC_DECL_PREFIX int so_fputc(int c, SO_FILE *stream)
         }
 
         stream->buffer[stream->buff_pos] = (unsigned char) c;
+        stream->last_op = 1;
         return c;
 }
 
@@ -246,13 +255,13 @@ FUNC_DECL_PREFIX int so_fflush(SO_FILE *stream)
 
         if (!exists) {
                 stream->had_error = 1;
-                return EOF;
+                return SO_EOF;
         }
 
         count = write(stream->fd, stream->buffer, strlen(stream->buffer));
         if (count == 0) {
                 stream->had_error = 1;
-                return EOF;
+                return SO_EOF;
         }
 
         memset(stream->buffer, 0, DEFAULT_BUF_SIZE + 1);
@@ -271,6 +280,22 @@ size_t so_fread(void *ptr, size_t size, size_t nmemb, SO_FILE *stream)
                 if (ch == SO_EOF)
                         break;
                 memcpy(p + i, &ch, 1);
+                count++;
+        }
+
+        return count;
+}
+
+FUNC_DECL_PREFIX
+size_t so_fwrite(const void *ptr, size_t size, size_t nmemb, SO_FILE *stream)
+{
+        char *p = ptr;
+        size_t i, count = 0;
+
+        for (i = 0; i < nmemb * size; i++) {
+                unsigned char ch = (unsigned char) so_fputc((int) *(p + i), stream);
+                if (ch == SO_EOF)
+                        break;
                 count++;
         }
 
