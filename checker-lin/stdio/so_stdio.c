@@ -22,6 +22,7 @@ struct _so_file
         long read_pos;
         long write_pos;
         int buff_pos;
+        int buff_size;
         char mode[3];
         int fd;
         char reached_end;
@@ -49,14 +50,26 @@ FUNC_DECL_PREFIX int so_fgetc(SO_FILE *stream)
                 return 0;
         }
 
+        if (stream->buff_pos >= stream->buff_size - 1 && stream->buff_pos > -1 && stream->buff_size < DEFAULT_BUF_SIZE - 1) {
+                stream->reached_end = 1;
+                return SO_EOF;
+        }
+
         if (stream->buff_pos == DEFAULT_BUF_SIZE - 1 || stream->buff_pos == -1) {
                 memset(stream->buffer, 0, DEFAULT_BUF_SIZE);
                 int count = read(stream->fd, stream->buffer, DEFAULT_BUF_SIZE);
+
+                if (count == -1) {
+                        stream->had_error = 1;
+                        return SO_EOF;
+                }
+
                 if (count == 0) {
                         stream->reached_end = 1;
                         return SO_EOF;
                 }
 
+                stream->buff_size = count;
                 stream->buff_pos = 0;
                 stream->read_pos++;
 
@@ -71,17 +84,23 @@ FUNC_DECL_PREFIX int so_fgetc(SO_FILE *stream)
 
 FUNC_DECL_PREFIX int so_fclose(SO_FILE *stream)
 {
+        stream->had_error = 0;
         if (stream->last_op == WRITE) {
                 int cnt = so_fflush(stream);
                 if (cnt == SO_EOF)
                         return -1;
         }
         int fd = stream->fd;
+        int err = stream->had_error;
         free(stream->pathname);
         free(stream->buffer);
         free(stream);
+        
+        int ret = close(fd);
 
-        return close(fd);
+        if (err)
+                return -1;
+        return ret;
 }
 
 FUNC_DECL_PREFIX SO_FILE *so_fopen(const char *pathname, const char *mode)
@@ -159,7 +178,7 @@ FUNC_DECL_PREFIX SO_FILE *so_fopen(const char *pathname, const char *mode)
         file->buff_pos = -1;
         file->reached_end = 0;
         file->last_op = 0;
-
+        file->buff_size = 0;
         if (fd < 0) {
                 file->fd = open(pathname, mod, 0644);
                 if (file->fd < 0) {
@@ -181,7 +200,7 @@ FUNC_DECL_PREFIX int so_fileno(SO_FILE *stream)
 
 FUNC_DECL_PREFIX int so_feof(SO_FILE *stream)
 {
-        return stream->reached_end;
+        return (stream->reached_end) ? SO_EOF : 0;
 }
 
 FUNC_DECL_PREFIX int so_fputc(int c, SO_FILE *stream)
@@ -204,8 +223,13 @@ FUNC_DECL_PREFIX int so_fputc(int c, SO_FILE *stream)
 
         if (stream->buff_pos == DEFAULT_BUF_SIZE - 1) {
                 count = write(stream->fd, stream->buffer, DEFAULT_BUF_SIZE);
-                if (count == 0) {
+
+                if (count == -1){
                         stream->had_error = 1;
+                }
+
+                if (count == 0) {
+                        //stream->had_error = 1;
                         return SO_EOF;
                 }
 
@@ -241,10 +265,11 @@ FUNC_DECL_PREFIX int so_fflush(SO_FILE *stream)
         }
 
         count = write(stream->fd, stream->buffer, stream->buff_pos + 1);
-        if (count == 0) {
+        if (count == -1)
                 stream->had_error = 1;
+
+        if (count == 0)
                 return 0;
-        }
 
         memset(stream->buffer, 0, DEFAULT_BUF_SIZE + 1);
         stream->buff_pos = -1;
@@ -257,13 +282,19 @@ size_t so_fread(void *ptr, size_t size, size_t nmemb, SO_FILE *stream)
 {
         char *p = ptr;
         size_t i, count = 0;
+        stream->had_error = 0;
+
         for (i = 0; i < nmemb * size; i++) {
                 unsigned char ch = (unsigned char) so_fgetc(stream);
                 if (ch == SO_EOF)
                         break;
+
                 memcpy(p + i, &ch, 1);
                 count++;
         }
+
+        if (stream->had_error)
+                return 0;
 
         return count;
 }
@@ -273,6 +304,7 @@ size_t so_fwrite(const void *ptr, size_t size, size_t nmemb, SO_FILE *stream)
 {
         char *p = ptr;
         size_t i, count = 0;
+        stream->had_error = 0;
 
         for (i = 0; i < nmemb * size; i++) {
                 unsigned char ch = (unsigned char) so_fputc((int) *(p + i), stream);
@@ -281,34 +313,51 @@ size_t so_fwrite(const void *ptr, size_t size, size_t nmemb, SO_FILE *stream)
                 count++;
         }
 
+        if (stream->had_error)
+                return 0;
+
         return count;
 }
 
 FUNC_DECL_PREFIX long so_ftell(SO_FILE *stream)
 {
+        if (!strcmp("w", stream->mode) || !strcmp("a", stream->mode))
+                return stream->write_pos + strlen(stream->buffer);
+        if (!strcmp("r", stream->mode))
+                return stream->read_pos;
         return 0;
 }
 
 FUNC_DECL_PREFIX int so_fseek(SO_FILE *stream, long offset, int whence)
 {
         off_t count = lseek(stream->fd, offset, whence);
+
+        if (!strcmp("w", stream->mode) || !strcmp("a", stream->mode))
+                stream->write_pos = count;
+        if (!strcmp("r", stream->mode))
+                stream->read_pos = count;
         return (count >= 0) ? 0 : -1;
 }
 
-int main() {
+FUNC_DECL_PREFIX int so_ferror(SO_FILE *stream)
+{
+        return (stream->had_error) ? SO_EOF : 0;
+}
+
+/*int main() {
         char name[] = "test_file.txt";
-        int fd = open(name, O_WRONLY | O_CREAT);
+        int fd = open(name, O_RDWR | O_CREAT, 0644);
 
-        write(fd, name, strlen(name));
-
+        int cnt= write(fd, name, strlen(name));
+        printf("%d\n", cnt);
         char bf[] = "TEXT";
-        int cnt = lseek(fd, 0, SEEK_SET);
+        cnt = lseek(fd, -5, SEEK_END);
         write(fd, bf, strlen(bf));
         //char c[100];
         //read(fd, c, 5);
         //printf("Read:%s\n", c);
 
-        /*(SO_FILE *file = so_fopen(name, "a+");
+        SO_FILE *file = so_fopen(name, "a+");
 
         if (file == NULL) {
                 printf("Failed to open file!\n");
@@ -337,7 +386,7 @@ int main() {
         cnt = so_fwrite(buff, 1, strlen(buff), file);//so_fwrite(buf, 1, buf_len, file);
         printf("%d\n", cnt);
         //so_fflush(file);
-        so_fclose(file);*/
+        so_fclose(file);
 
         return 0;
-}
+}*/
