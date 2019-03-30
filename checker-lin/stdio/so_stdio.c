@@ -95,7 +95,7 @@ FUNC_DECL_PREFIX int so_fclose(SO_FILE *stream)
         free(stream->pathname);
         free(stream->buffer);
         free(stream);
-        
+
         int ret = close(fd);
 
         if (err)
@@ -290,7 +290,9 @@ size_t so_fread(void *ptr, size_t size, size_t nmemb, SO_FILE *stream)
                         break;
 
                 memcpy(p + i, &ch, 1);
-                count++;
+
+                if (!stream->had_error)
+                        count++;
         }
 
         if (stream->had_error)
@@ -342,6 +344,16 @@ FUNC_DECL_PREFIX int so_fseek(SO_FILE *stream, long offset, int whence)
 FUNC_DECL_PREFIX int so_ferror(SO_FILE *stream)
 {
         return (stream->had_error) ? SO_EOF : 0;
+}
+
+FUNC_DECL_PREFIX SO_FILE *so_popen(const char *command, const char *type)
+{
+
+}
+
+FUNC_DECL_PREFIX int so_pclose(SO_FILE *stream)
+{
+        
 }
 
 /*int main() {
