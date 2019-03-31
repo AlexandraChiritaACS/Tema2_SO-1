@@ -15,8 +15,7 @@
 #define APPEND 3
 #define TRUNC 4
 
-struct _so_file
-{
+struct _so_file {
         char *pathname;
         char *buffer;
         long read_pos;
@@ -50,12 +49,14 @@ FUNC_DECL_PREFIX int so_fgetc(SO_FILE *stream)
                 return 0;
         }
 
-        if (stream->buff_pos >= stream->buff_size - 1 && stream->buff_pos > -1 && stream->buff_size < DEFAULT_BUF_SIZE - 1) {
+        if (stream->buff_pos >= stream->buff_size - 1 && stream->buff_pos > -1
+                && stream->buff_size < DEFAULT_BUF_SIZE - 1) {
                 stream->reached_end = 1;
                 return SO_EOF;
         }
 
-        if (stream->buff_pos == DEFAULT_BUF_SIZE - 1 || stream->buff_pos == -1) {
+        if (stream->buff_pos == DEFAULT_BUF_SIZE - 1
+                || stream->buff_pos == -1) {
                 memset(stream->buffer, 0, DEFAULT_BUF_SIZE);
                 int count = read(stream->fd, stream->buffer, DEFAULT_BUF_SIZE);
 
@@ -87,11 +88,13 @@ FUNC_DECL_PREFIX int so_fclose(SO_FILE *stream)
         stream->had_error = 0;
         if (stream->last_op == WRITE) {
                 int cnt = so_fflush(stream);
+
                 if (cnt == SO_EOF)
                         return -1;
         }
         int fd = stream->fd;
         int err = stream->had_error;
+
         free(stream->pathname);
         free(stream->buffer);
         free(stream);
@@ -113,7 +116,6 @@ FUNC_DECL_PREFIX SO_FILE *so_fopen(const char *pathname, const char *mode)
         mode_t mod = 0;
         SO_FILE *file;
 
-        // check if file open mode is correct
         for (i = 0; i < 6; i++)
                 if (!strcmp(possible_modes[i], mode)) {
                         exists = 1;
@@ -134,14 +136,12 @@ FUNC_DECL_PREFIX SO_FILE *so_fopen(const char *pathname, const char *mode)
         if (!strcmp(mode, "a"))
                 mod = O_WRONLY | O_CREAT | O_APPEND;
         if (!strcmp(mode, "a+"))
-                mod = O_RDWR | O_CREAT;// | O_APPEND;
-        //file->mode = mod;
+                mod = O_RDWR | O_CREAT;
 
-        // check if it's reading mode and the file doesn't exist
-        if (access(pathname, F_OK ) == -1) {
-                if (!strcmp(mode, "r") || !strcmp(mode, "r+")) {
+        if (access(pathname, F_OK) == -1) {
+                if (!strcmp(mode, "r") || !strcmp(mode, "r+"))
                         return NULL;
-                }
+
                 fd = creat(pathname, 0644);
                 if (fd < 0)
                         return NULL;
@@ -224,22 +224,18 @@ FUNC_DECL_PREFIX int so_fputc(int c, SO_FILE *stream)
         if (stream->buff_pos == DEFAULT_BUF_SIZE - 1) {
                 count = write(stream->fd, stream->buffer, DEFAULT_BUF_SIZE);
 
-                if (count == -1){
+                if (count == -1)
                         stream->had_error = 1;
-                }
 
-                if (count == 0) {
-                        //stream->had_error = 1;
+                if (count == 0)
                         return SO_EOF;
-                }
 
                 memset(stream->buffer, 0, DEFAULT_BUF_SIZE + 1);
                 stream->buff_pos = 0;
                 stream->write_pos += count;
 
-        } else {
+        } else
                 stream->buff_pos++;
-        }
 
         stream->buffer[stream->buff_pos] = (unsigned char) c;
         stream->last_op = WRITE;
@@ -282,10 +278,12 @@ size_t so_fread(void *ptr, size_t size, size_t nmemb, SO_FILE *stream)
 {
         char *p = ptr;
         size_t i, count = 0;
+
         stream->had_error = 0;
 
         for (i = 0; i < nmemb * size; i++) {
                 unsigned char ch = (unsigned char) so_fgetc(stream);
+
                 if (ch == SO_EOF)
                         break;
 
@@ -306,10 +304,12 @@ size_t so_fwrite(const void *ptr, size_t size, size_t nmemb, SO_FILE *stream)
 {
         char *p = ptr;
         size_t i, count = 0;
+        unsigned char ch;
+
         stream->had_error = 0;
 
         for (i = 0; i < nmemb * size; i++) {
-                unsigned char ch = (unsigned char) so_fputc((int) *(p + i), stream);
+                ch = (unsigned char) so_fputc((int) *(p + i), stream);
                 if (ch == SO_EOF)
                         break;
                 count++;
@@ -353,52 +353,5 @@ FUNC_DECL_PREFIX SO_FILE *so_popen(const char *command, const char *type)
 
 FUNC_DECL_PREFIX int so_pclose(SO_FILE *stream)
 {
-        
+
 }
-
-/*int main() {
-        char name[] = "test_file.txt";
-        int fd = open(name, O_RDWR | O_CREAT, 0644);
-
-        int cnt= write(fd, name, strlen(name));
-        printf("%d\n", cnt);
-        char bf[] = "TEXT";
-        cnt = lseek(fd, -5, SEEK_END);
-        write(fd, bf, strlen(bf));
-        //char c[100];
-        //read(fd, c, 5);
-        //printf("Read:%s\n", c);
-
-        SO_FILE *file = so_fopen(name, "a+");
-
-        if (file == NULL) {
-                printf("Failed to open file!\n");
-                return 0;
-        }
-
-        printf("pathname: %s\n", file->pathname);
-        printf("buffer: %s\n", file->buffer);
-        printf("mode: %s\n", file->mode);
-        printf("fd: %d\n", file->fd);
-        printf("read_pos: %d\n", file->read_pos);
-        printf("write_pos: %d\n", file->write_pos);
-        printf("buff_pos: %d\n\n\n", file->buff_pos);
-
-        int c = 0;
-        printf("Text:\n");
-
-        char buf[] = "Ana are mere";
-        int cnt = so_fwrite(buf, 1, strlen(buf), file);//so_fwrite(buf, 1, buf_len, file);
-        printf("%d\n", cnt);
-        so_fflush(file);
-
-        lseek(file->fd, -50, SEEK_END);
-        //so_fseek(file, -5, SEEK_SET);
-        char buff[] = "Lidia";
-        cnt = so_fwrite(buff, 1, strlen(buff), file);//so_fwrite(buf, 1, buf_len, file);
-        printf("%d\n", cnt);
-        //so_fflush(file);
-        so_fclose(file);
-
-        return 0;
-}*/
