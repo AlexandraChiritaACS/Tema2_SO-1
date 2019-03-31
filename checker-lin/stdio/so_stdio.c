@@ -302,7 +302,7 @@ size_t so_fread(void *ptr, size_t size, size_t nmemb, SO_FILE *stream)
 FUNC_DECL_PREFIX
 size_t so_fwrite(const void *ptr, size_t size, size_t nmemb, SO_FILE *stream)
 {
-	char *p = ptr;
+	const char *p = ptr;
 	size_t i, count = 0;
 	unsigned char ch;
 
