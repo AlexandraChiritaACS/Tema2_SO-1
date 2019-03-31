@@ -1,0 +1,49 @@
+        Am definit structura _so_file astfel incat sa contina bufferul, numele
+fisierului, pozitia in buffer, modul, descriptorul de fisier, pozitiile de
+scriere si citire, pozitia in buffer si flag-uri care sa indice daca am ajuns
+la sfarsitul fisierului, am avut o eroare sau care a fost ultima operatie
+efectuata.
+
+                                so_fopen()
+                                ==========
+        La inceput am verificat daca modul primit ca parametru este unul valid
+(daca se afla intr-o lista predefinita), apoi am setat modul pentru
+deschiderea fisierului in functie de cel primit ca parametru (folosind
+flag-uri precum O_RDONLY, O_CREAT, etc.). Urmatoarea verificare a fost cea
+prin care daca am un mod de citire in care fisierul ar trebui sa existe deja,
+verific daca acesta exista sau il creez daca am un mod care creeaza fisierul.
+Apoi imi aloc o structura de tip SO_FILE, in care copiez numele fisierului,
+modul de creare, imi aloc bufferul, setez indicii si flag-urile la valori
+initiale si deschide un file descriptor. Daca o verificare pica, atunci
+functia va returna NULL.
+
+
+                                so_fclose()
+                                ===========
+        Verific daca ultima operatie efectuata a fost una de write si in caz
+afirmativ, apelez so_fflush. Apoi dezaloc memoria ocupata de stringurile
+din structura si inchid fisierul. Daca apare o eroare pe parcurs, atunci
+returnez -1.
+
+
+                                so_fgetc()
+                                ==========
+        Verific daca nu cumva am ajuns deja la sfarsitul fisierului si daca
+modul de deschidere al fisierului permite operatii de citire. Apoi verific din
+nou daca am ajuns la finalul fisierului folosind indicii pentru buffer si
+dimensiunea lui. Apoi verific daca am ajuns la finalul bufferului si in caz
+afirmativ, il golesc si citesc din nou DEFAULT_BUF_SIZE elemente, altfel
+cresc indicele curent din buffer si la final returnez caracterul de pe pozitia
+curenta.
+
+
+                                so_fputc()
+                                ==========
+        Verific daca modul de deschidere al fisierului permite scrierea. Apoi
+verific daca s-a umplut bufferul si in caz afirmativ, citesc din nou
+DEFAULT_BUF_SIZE elemente si setez pozitia din buffer la 0, altfel doar
+incrementez pozitia din buffer. La final returnez elementul curent.
+
+
+                                so_fread()
+                                ==========
