@@ -1,8 +1,8 @@
         Am definit structura _so_file astfel incat sa contina bufferul, numele
-fisierului, pozitia in buffer, modul, descriptorul de fisier, pozitiile de
-scriere si citire, pozitia in buffer si flag-uri care sa indice daca am ajuns
-la sfarsitul fisierului, am avut o eroare sau care a fost ultima operatie
-efectuata.
+fisierului, pozitia in buffer, modul, descriptorul de fisier / handlerul,
+pozitiile de scriere si citire, pozitia in buffer si flag-uri care sa indice
+daca am ajuns la sfarsitul fisierului, am avut o eroare sau care a fost ultima
+operatie efectuata.
 
                                 so_fopen()
                                 ==========
@@ -14,16 +14,17 @@ prin care daca am un mod de citire in care fisierul ar trebui sa existe deja,
 verific daca acesta exista sau il creez daca am un mod care creeaza fisierul.
 Apoi imi aloc o structura de tip SO_FILE, in care copiez numele fisierului,
 modul de creare, imi aloc bufferul, setez indicii si flag-urile la valori
-initiale si deschide un file descriptor. Daca o verificare pica, atunci
-functia va returna NULL.
+initiale si deschide un file descriptor / handler. Daca o verificare pica,
+atunci functia va returna NULL.
 
 
                                 so_fclose()
                                 ===========
-        Verific daca ultima operatie efectuata a fost una de write si in caz
-afirmativ, apelez so_fflush. Apoi dezaloc memoria ocupata de stringurile
-din structura si inchid fisierul. Daca apare o eroare pe parcurs, atunci
-returnez -1.
+        Verific daca ultima operatie efectuata a fost una de scriere si in caz
+afirmativ apelez so_fflush. Apoi retin daca a aparut o eroare pe parcurs si
+eliberez memoria. In functie de faptul daca a existat o eroare si daca
+eliberarea file descriptor-ului/handlerul-ului a fost efectuata cu succes,
+functia so_fclose returneaza -1 sau 0.
 
 
                                 so_fgetc()
@@ -37,6 +38,13 @@ cresc indicele curent din buffer si la final returnez caracterul de pe pozitia
 curenta.
 
 
+                                so_fflush()
+                                ===========
+        Verific daca fisierul permite operatia de scriere si in caz afirmativ,
+scriu tot ce am in buffer cu un singur apel de sistem si resetez bufferul si
+indicele acestuia.
+
+
                                 so_fputc()
                                 ==========
         Verific daca modul de deschidere al fisierului permite scrierea. Apoi
@@ -47,3 +55,35 @@ incrementez pozitia din buffer. La final returnez elementul curent.
 
                                 so_fread()
                                 ==========
+        Apelez fgetc byte cu byte si il adaug pe fiecare in structura finala.
+
+
+                                so_fwrite()
+                                ===========
+        Apelez fputc byte cu byte si profit de proprietatea de buffering a
+implementarii mele.
+
+
+                                so_fileno()
+                                ===========
+        Returnez descriptorul/handlerul de fisier din structura SO_FILE primita
+ca parametru.
+
+
+                                so_feof()
+                                =========
+        Returnez SO_EOF daca flagul reached_end din structura a fost setat sau
+0 altfel.
+
+
+                                so_ferror()
+                                ===========
+        Returnez SO_EOF daca flagul had_error din structura a fost setat sau
+0 altfel.
+
+
+                                so_ftell()
+                                ==========
+        Returnez indicele de scriere din fisier + cate elemente am in buffer
+daca fisierul este deschis in mod scriere, pozitia de scriere daca fisierul
+este deschis in mod scriere sau 0 altfel.
